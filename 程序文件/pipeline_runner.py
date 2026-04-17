@@ -26,35 +26,46 @@ def run_pipeline(
     output,
     po_mapping=None,
     formal_mapping=None,
+    progress_callback=None,
 ):
+    def report_progress(progress, stage, message):
+        if progress_callback:
+            progress_callback(progress=progress, stage=stage, message=message)
+
     output_dir = os.path.dirname(os.path.abspath(output))
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
+    report_progress(2, 'init', '开始初始化任务')
     print('=' * 60)
     print('IT 资产供应链数据自动化处理系统')
     print('=' * 60)
 
     print('\n[Step 1] 加载 Mapping 配置...')
+    report_progress(8, 'mapping', '加载 Mapping 配置')
     mapping_loader = MappingLoader(mapping, formal_mapping_path=formal_mapping)
     print('✓ Mapping 配置加载完成')
 
     print('\n[Step 2] 处理 SOH 数据...')
+    report_progress(18, 'soh', '处理 SOH 数据')
     soh_processor = SOHProcessor(soh, mapping_loader)
     soh_df = soh_processor.get_processed_df()
     print(f'✓ SOH 数据处理完成，共 {len(soh_df)} 行')
 
     print('\n[Step 3] 处理 In Transit 数据...')
+    report_progress(30, 'in_transit', '处理 In Transit 数据')
     in_transit_processor = InTransitProcessor(in_transit, mapping_loader)
     in_transit_df = in_transit_processor.get_processed_df()
     print(f'✓ In Transit 数据处理完成，共 {len(in_transit_df)} 行')
 
     print('\n[Step 4] 处理 VMI 数据...')
+    report_progress(42, 'vmi', '处理 VMI 数据')
     vmi_processor = VMIProcessor(vmi, mapping_loader)
     vmi_df = vmi_processor.get_processed_df()
     print(f'✓ VMI 数据处理完成，共 {len(vmi_df)} 行')
 
     print('\n[Step 5] 处理 Open PO 数据...')
+    report_progress(56, 'open_po', '处理 Open PO 数据')
     open_po_processor = OpenPOProcessor(
         overseas_po,
         china_po,
@@ -70,6 +81,7 @@ def run_pipeline(
     )
 
     print('\n[Step 6] 处理需求数据...')
+    report_progress(70, 'demand', '处理需求数据')
     demand_files = [
         demand_all,
         demand_hire,
@@ -81,6 +93,7 @@ def run_pipeline(
     print(f'✓ 需求数据处理完成，共 {len(demand_df)} 行')
 
     print('\n[Step 7] 生成汇总表...')
+    report_progress(82, 'summary', '生成汇总表')
     summary_gen = SummaryGenerator(
         soh_df,
         in_transit_df,
@@ -93,6 +106,7 @@ def run_pipeline(
     print('✓ 汇总表生成完成')
 
     print('\n[Step 8] 收集未映射记录...')
+    report_progress(90, 'unmapped', '收集未映射记录')
     all_unmapped = []
     all_unmapped.extend(soh_processor.get_unmapped())
     all_unmapped.extend(in_transit_processor.get_unmapped())
@@ -102,6 +116,7 @@ def run_pipeline(
     print(f'✓ 收集到 {len(all_unmapped)} 条未映射记录')
 
     print('\n[Step 9] 输出 Excel 文件...')
+    report_progress(96, 'write_output', '写出结果 Excel')
     with ExcelWriter(output) as writer:
         writer.write_summary_region(summary_df)
 
@@ -124,6 +139,7 @@ def run_pipeline(
     print('\n' + '=' * 60)
     print('处理完成！')
     print('=' * 60)
+    report_progress(100, 'done', '处理完成')
 
     return {
         'output_path': output,
