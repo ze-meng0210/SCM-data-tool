@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+web_runs/
+out put /
+uploads/
+*.csv
+*.log
+.DS_Store
+
+# 原始业务数据与本地输出
+库存数据/
+全球需求数据/
+
+# 默认忽略 Excel，但保留部署需要的规则文件
+*.xlsx
+!mapping rules/mapping.xlsx
+!mapping rules/mapping_temp_fixed.xlsx
+!mapping rules/正式标准化SPU映射表.xlsx
