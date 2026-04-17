@@ -25,6 +25,7 @@ def run_pipeline(
     mapping,
     output,
     po_mapping=None,
+    formal_mapping=None,
 ):
     output_dir = os.path.dirname(os.path.abspath(output))
     if output_dir:
@@ -35,7 +36,7 @@ def run_pipeline(
     print('=' * 60)
 
     print('\n[Step 1] 加载 Mapping 配置...')
-    mapping_loader = MappingLoader(mapping)
+    mapping_loader = MappingLoader(mapping, formal_mapping_path=formal_mapping)
     print('✓ Mapping 配置加载完成')
 
     print('\n[Step 2] 处理 SOH 数据...')

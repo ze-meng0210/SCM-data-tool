@@ -4,9 +4,9 @@ from utils import read_excel_safely
 
 
 class MappingLoader:
-    def __init__(self, mapping_path):
+    def __init__(self, mapping_path, formal_mapping_path=None):
         self.mapping_path = mapping_path
-        self.formal_mapping_path = self._discover_formal_mapping_path()
+        self.formal_mapping_path = formal_mapping_path or self._discover_formal_mapping_path()
         self.df_mapping = None
         self.mappings = {}
         self.formal_spu_mapping = {}
