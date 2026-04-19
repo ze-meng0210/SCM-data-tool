@@ -54,32 +54,53 @@ def render_page(message="", error=""):
     message_html = f'<div class="msg success">{html.escape(message)}</div>' if message else ""
     error_html = f'<div class="msg error"><pre>{html.escape(error)}</pre></div>' if error else ""
 
-    fields_html = "".join(
-        f"""
-        <div class="field">
-          <label for="{name}">{label}</label>
-          <input type="file" id="{name}" name="{name}" accept=".xlsx,.xls" required />
-        </div>
-        """
-        for name, label in REQUIRED_UPLOADS
-    )
+    stock_items = REQUIRED_UPLOADS[:5]
+    demand_items = REQUIRED_UPLOADS[5:]
+
+    def build_upload_fields(items, group_key):
+        blocks = []
+        for name, label in items:
+            blocks.append(
+                f"""
+                <div class="upload-item">
+                  <div class="upload-item-title">{label}</div>
+                  <label class="upload-dropzone" for="{name}">
+                    <input class="file-input" type="file" id="{name}" name="{name}" accept=".xlsx,.xls" required />
+                    <div class="upload-dropzone-inner">
+                      <div class="upload-icon">+</div>
+                      <div class="upload-main">点击选择 Excel 文件</div>
+                      <div class="upload-sub">支持 .xlsx / .xls，文件名可任意</div>
+                      <div class="upload-file-name" id="{group_key}_{name}_filename">未选择文件</div>
+                    </div>
+                  </label>
+                </div>
+                """
+            )
+        return "".join(blocks)
+
+    stock_fields_html = build_upload_fields(stock_items, "stock")
+    demand_fields_html = build_upload_fields(demand_items, "demand")
 
     mapping_box = """
-    <div class="card">
+    <div class="card side-card">
+      <div class="section-tag">规则中心</div>
       <h2>映射规则管理</h2>
       <p class="desc">用于下载/更新 <code>正式标准化SPU映射表.xlsx</code>（上传后会在后续任务中生效）。</p>
-      <p class="hint">
-        注意：如果部署在 Railway 这类平台上，文件系统可能是临时的；更新映射表通常只在本次部署实例生命周期内有效。
-        如需长期保存，建议把更新后的映射表提交回 GitHub 或使用持久化存储。
-      </p>
-      <p><a href="/mapping/formal/download">下载当前正式标准化SPU映射表</a></p>
+      <p class="mapping-link-row"><a class="ghost-link" href="/mapping/formal/download">下载当前正式标准化SPU映射表</a></p>
       <form action="/mapping/formal/upload" method="post" enctype="multipart/form-data">
-        <div class="field">
-          <label for="formal_mapping_file">上传更新后的正式标准化SPU映射表（.xlsx）</label>
-          <input type="file" id="formal_mapping_file" name="formal_mapping_file" accept=".xlsx,.xls" required />
-          <div class="hint">要求包含 sheet：<code>正式映射表</code>，并包含列：<code>原始表名</code>、<code>原始字段名</code>、<code>原始值</code>、<code>标准化SPU</code>（或 <code>标准SPU</code>）。</div>
+        <div class="upload-item compact">
+          <div class="upload-item-title">上传更新后的正式映射表</div>
+          <label class="upload-dropzone compact" for="formal_mapping_file">
+            <input class="file-input" type="file" id="formal_mapping_file" name="formal_mapping_file" accept=".xlsx,.xls" required />
+            <div class="upload-dropzone-inner">
+              <div class="upload-icon">+</div>
+              <div class="upload-main">选择新的正式标准化SPU映射表</div>
+              <div class="upload-sub">需包含 sheet: 正式映射表 和标准化SPU相关列</div>
+              <div class="upload-file-name" id="mapping_formal_mapping_file_filename">未选择文件</div>
+            </div>
+          </label>
         </div>
-        <button type="submit">上传并替换</button>
+        <button class="primary-btn secondary-btn" type="submit">上传并替换</button>
       </form>
     </div>
     """
@@ -91,53 +112,334 @@ def render_page(message="", error=""):
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>库存需求表处理工具</title>
   <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#f5f7fb; color:#1f2937; margin:0; }}
-    .wrap {{ max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }}
-    .card {{ background:#fff; border-radius:16px; padding:24px; box-shadow:0 8px 24px rgba(15,23,42,.08); margin-bottom:20px; }}
-    h1 {{ margin:0 0 8px; font-size:28px; }}
-    p.desc {{ margin:0; color:#4b5563; }}
-    form {{ display:grid; gap:14px; margin-top:18px; }}
-    .field label {{ display:block; margin-bottom:6px; font-weight:600; }}
-    .field input[type=file] {{ width:100%; }}
-    button {{ background:#2563eb; color:#fff; border:0; border-radius:10px; padding:12px 18px; font-size:15px; cursor:pointer; }}
-    button:hover {{ background:#1d4ed8; }}
-    button[disabled] {{ background:#94a3b8; cursor:not-allowed; }}
-    .msg {{ border-radius:12px; padding:14px 16px; margin-bottom:16px; }}
-    .success {{ background:#ecfdf5; color:#166534; }}
-    .error {{ background:#fef2f2; color:#991b1b; }}
-    pre {{ white-space:pre-wrap; word-break:break-word; background:#0f172a; color:#e2e8f0; padding:16px; border-radius:12px; overflow:auto; }}
-    .hint {{ font-size:13px; color:#6b7280; margin-top:6px; }}
-    .grid {{ display:grid; grid-template-columns: 1fr; gap:20px; }}
-    @media (min-width: 980px) {{ .grid {{ grid-template-columns: 1.2fr .8fr; }} }}
-    .loading {{ display:none; margin-top:10px; }}
-    .progress-meta {{ display:flex; justify-content:space-between; align-items:center; margin:8px 0 6px; color:#475569; font-size:13px; }}
-    .bar {{ height:10px; background:#e5e7eb; border-radius:999px; overflow:hidden; }}
-    .bar > div {{ width:0%; height:100%; background:#2563eb; transition: width .35s ease; }}
-    .stats-grid {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-top:12px; }}
-    .stat {{ background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px; padding:12px; }}
-    .stat .k {{ color:#64748b; font-size:12px; margin-bottom:6px; }}
-    .stat .v {{ font-size:20px; font-weight:700; }}
-    .hidden {{ display:none; }}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {{
+      --bg: #0f1117;
+      --bg2: #1a1b2e;
+      --panel: rgba(255,255,255,0.05);
+      --border: rgba(255,255,255,0.10);
+      --border-strong: rgba(96,165,250,0.34);
+      --text-main: #f1f5f9;
+      --text-sub: #94a3b8;
+      --text-muted: #64748b;
+      --primary: #3b82f6;
+      --primary-2: #6366f1;
+      --shadow: 0 12px 36px rgba(2,6,23,.45);
+    }}
+
+    * {{ box-sizing: border-box; }}
+
+    body {{
+      margin: 0;
+      color: var(--text-main);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(59,130,246,.16), transparent 32%),
+        radial-gradient(circle at top right, rgba(99,102,241,.16), transparent 28%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+      min-height: 100vh;
+    }}
+
+    .wrap {{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 36px 20px 72px;
+    }}
+
+    .hero {{
+      text-align: center;
+      margin-bottom: 24px;
+    }}
+
+    .hero-badge {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(59,130,246,.12);
+      border: 1px solid rgba(96,165,250,.22);
+      color: #bfdbfe;
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }}
+
+    .hero h1 {{
+      margin: 0;
+      font-size: 40px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }}
+
+    .hero p {{
+      margin: 14px auto 0;
+      max-width: 760px;
+      color: var(--text-sub);
+      font-size: 16px;
+      line-height: 1.75;
+    }}
+
+    .layout {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);
+      gap: 24px;
+      align-items: start;
+    }}
+
+    @media (max-width: 1024px) {{
+      .layout {{ grid-template-columns: 1fr; }}
+    }}
+
+    .card {{
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      transition: all .3s ease;
+      overflow: hidden;
+    }}
+
+    .card:hover {{
+      transform: translateY(-2px);
+      border-color: var(--border-strong);
+      box-shadow: 0 18px 42px rgba(2,6,23,.5);
+    }}
+
+    .side-card {{ position: sticky; top: 20px; }}
+
+    .section-tag {{
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #bfdbfe;
+      background: rgba(59,130,246,.14);
+      border: 1px solid rgba(96,165,250,.22);
+      margin-bottom: 14px;
+    }}
+
+    .card h2 {{ margin: 0 0 8px; font-size: 22px; font-weight: 700; }}
+    .desc {{ margin: 0; color: var(--text-sub); line-height: 1.75; }}
+    .hint {{ font-size: 13px; color: var(--text-muted); line-height: 1.65; }}
+
+    .msg {{
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 18px;
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+    }}
+
+    .success {{ background: rgba(34,197,94,.12); color: #bbf7d0; border-color: rgba(34,197,94,.22); }}
+    .error {{ background: rgba(239,68,68,.12); color: #fecaca; border-color: rgba(239,68,68,.22); }}
+    .error pre {{ margin: 0; background: transparent; padding: 0; border: 0; color: inherit; }}
+
+    .upload-groups {{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }}
+
+    @media (min-width: 860px) {{
+      .upload-groups {{ grid-template-columns: 1fr 1fr; }}
+    }}
+
+    .group-card {{
+      border-radius: 16px;
+      padding: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.025));
+      border: 1px solid rgba(255,255,255,.08);
+    }}
+
+    .group-title {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+      font-size: 18px;
+      font-weight: 700;
+    }}
+
+    .group-title::before {{
+      content: "";
+      width: 4px;
+      height: 18px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--primary-2), var(--primary));
+      box-shadow: 0 0 14px rgba(59,130,246,.45);
+    }}
+
+    .upload-list {{ display: grid; gap: 14px; }}
+    .upload-item-title {{ margin-bottom: 8px; font-size: 14px; font-weight: 600; color: #dbeafe; }}
+
+    .upload-dropzone {{
+      position: relative;
+      display: block;
+      border: 1px dashed rgba(148,163,184,.35);
+      border-radius: 14px;
+      background: rgba(15,23,42,.35);
+      cursor: pointer;
+      transition: all .25s ease;
+      overflow: hidden;
+    }}
+
+    .upload-dropzone:hover {{
+      border-color: rgba(96,165,250,.72);
+      box-shadow: 0 0 0 1px rgba(96,165,250,.18), 0 0 24px rgba(59,130,246,.12);
+      transform: translateY(-1px);
+    }}
+
+    .upload-dropzone-inner {{ padding: 16px 16px 14px; text-align: center; }}
+    .upload-dropzone.compact .upload-dropzone-inner {{ padding: 14px; }}
+
+    .upload-icon {{
+      width: 34px;
+      height: 34px;
+      margin: 0 auto 10px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      color: #dbeafe;
+      background: linear-gradient(135deg, rgba(99,102,241,.25), rgba(59,130,246,.28));
+      border: 1px solid rgba(96,165,250,.22);
+    }}
+
+    .upload-main {{ font-size: 14px; font-weight: 600; color: var(--text-main); }}
+    .upload-sub {{ margin-top: 6px; font-size: 12px; color: var(--text-muted); }}
+    .upload-file-name {{ margin-top: 10px; font-size: 12px; color: var(--text-sub); word-break: break-all; }}
+    .upload-file-name.selected {{ color: #86efac; }}
+    .upload-file-name.selected::before {{ content: "[OK] "; color: #22c55e; font-weight: 700; }}
+
+    .file-input {{ position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }}
+
+    .primary-btn {{
+      width: 100%;
+      margin-top: 18px;
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 15px;
+      font-weight: 700;
+      color: white;
+      background: linear-gradient(135deg, var(--primary-2), var(--primary));
+      box-shadow: 0 12px 24px rgba(59,130,246,.24);
+      cursor: pointer;
+      transition: all .3s ease;
+    }}
+
+    .primary-btn:hover {{
+      transform: translateY(-1px);
+      box-shadow: 0 14px 30px rgba(59,130,246,.32), 0 0 24px rgba(59,130,246,.18);
+    }}
+
+    .primary-btn[disabled] {{
+      background: linear-gradient(135deg, rgba(99,102,241,.45), rgba(59,130,246,.45));
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+    }}
+
+    .secondary-btn {{ width: auto; min-width: 180px; }}
+    .mapping-link-row {{ margin: 16px 0 14px; }}
+
+    .ghost-link {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #bfdbfe;
+      text-decoration: none;
+      font-weight: 600;
+    }}
+
+    .ghost-link:hover {{ color: white; text-shadow: 0 0 18px rgba(96,165,250,.35); }}
+
+    .loading {{
+      display: none;
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(15,23,42,.45);
+      border: 1px solid rgba(96,165,250,.16);
+    }}
+
+    .progress-meta {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 8px 0 8px;
+      color: #cbd5e1;
+      font-size: 13px;
+      gap: 12px;
+    }}
+
+    .bar {{ height: 10px; background: rgba(255,255,255,.06); border-radius: 999px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); }}
+    .bar > div {{ width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary-2), var(--primary)); box-shadow: 0 0 18px rgba(59,130,246,.38); transition: width .35s ease; }}
+
+    .result-card {{ margin-top: 22px; }}
+    .result-meta-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }}
+    .meta-box {{ padding: 14px 16px; border-radius: 14px; background: rgba(15,23,42,.34); border: 1px solid rgba(255,255,255,.06); }}
+    .meta-label {{ color: var(--text-muted); font-size: 12px; margin-bottom: 6px; }}
+    .meta-value {{ color: var(--text-main); font-weight: 700; font-size: 15px; word-break: break-all; }}
+
+    .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }}
+    .stat {{ background: rgba(15,23,42,.34); border: 1px solid rgba(255,255,255,.07); border-radius: 14px; padding: 14px; }}
+    .stat .k {{ color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }}
+    .stat .v {{ font-size: 22px; font-weight: 700; color: var(--text-main); }}
+
+    details {{ margin-top: 18px; border-top: 1px solid rgba(255,255,255,.06); padding-top: 16px; }}
+    details summary {{ cursor: pointer; font-weight: 600; color: #dbeafe; }}
+
+    pre {{
+      margin-top: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(2,6,23,.82);
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 14px;
+      overflow: auto;
+      border: 1px solid rgba(255,255,255,.06);
+    }}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <h1>库存需求表处理工具</h1>
-      <p class="desc">上传 5 个库存表和 4 个需求表，系统会自动调用现有 Python 处理逻辑并生成结果 Excel。</p>
-      <p class="hint">系统固定使用 <code>mapping rules/mapping.xlsx</code> 作为基础规则，并自动读取同目录下的正式标准化 SPU 映射表。</p>
+    <div class="hero">
+      <div class="hero-badge">Supply Chain Data Platform</div>
+      <h1>供应链数据处理工具</h1>
+      <p>上传 5 个库存类 Excel 与 4 个需求类 Excel，系统将自动执行标准化映射、数据处理与汇总计算，并生成结果文件。</p>
     </div>
     {message_html}
     {error_html}
-    <div class="grid">
+    <div class="layout">
       <div class="card">
+        <div class="section-tag">数据入口</div>
         <h2>上传原始文件</h2>
-        <p class="hint">原始文件命名没有硬性要求。系统按你上传到的“对应槽位”读取，不依赖文件名。</p>
+        <p class="desc">原始文件命名没有硬性要求。系统按上传槽位读取，不依赖文件名。</p>
         <form id="runForm" enctype="multipart/form-data">
-          {fields_html}
-          <button id="runBtn" type="submit">开始处理</button>
+          <div class="upload-groups">
+            <div class="group-card">
+              <div class="group-title">库存类数据</div>
+              <div class="upload-list">{stock_fields_html}</div>
+            </div>
+            <div class="group-card">
+              <div class="group-title">需求类数据</div>
+              <div class="upload-list">{demand_fields_html}</div>
+            </div>
+          </div>
+          <button id="runBtn" class="primary-btn" type="submit">开始处理</button>
           <div id="loading" class="loading">
-            <div class="hint">正在处理，请勿关闭页面。</div>
+            <div class="hint">任务正在执行中，请勿关闭页面。</div>
             <div class="progress-meta">
               <span id="progressStage">准备开始</span>
               <span id="progressPercent">0%</span>
@@ -145,21 +447,31 @@ def render_page(message="", error=""):
             <div class="bar"><div id="progressBar"></div></div>
           </div>
         </form>
+        <div id="resultCard" class="card result-card hidden">
+          <div class="section-tag">任务结果</div>
+          <h2>处理结果</h2>
+          <div class="result-meta-grid">
+            <div class="meta-box">
+              <div class="meta-label">任务ID</div>
+              <div class="meta-value" id="resultTaskId">-</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-label">状态</div>
+              <div class="meta-value" id="resultStatus">-</div>
+            </div>
+            <div class="meta-box">
+              <div class="meta-label">结果文件</div>
+              <div class="meta-value"><a class="ghost-link" id="resultDownload" href="#" target="_blank">下载输出 Excel</a></div>
+            </div>
+          </div>
+          <div id="resultStats" class="stats-grid"></div>
+          <details>
+            <summary>查看执行日志</summary>
+            <pre id="resultLog"></pre>
+          </details>
+        </div>
       </div>
-      <div>
-        {mapping_box}
-      </div>
-    </div>
-    <div id="resultCard" class="card hidden">
-      <h2>处理结果</h2>
-      <p><strong>任务ID：</strong><span id="resultTaskId">-</span></p>
-      <p><strong>状态：</strong><span id="resultStatus">-</span></p>
-      <p><strong>结果文件：</strong><a id="resultDownload" href="#" target="_blank">下载输出 Excel</a></p>
-      <div id="resultStats" class="stats-grid"></div>
-      <details>
-        <summary>查看执行日志</summary>
-        <pre id="resultLog"></pre>
-      </details>
+      <div>{mapping_box}</div>
     </div>
   </div>
   <script>
@@ -176,7 +488,32 @@ def render_page(message="", error=""):
     const resultLog = document.getElementById('resultLog');
     const resultStats = document.getElementById('resultStats');
 
+    function bindFileInputs() {{
+      document.querySelectorAll('.file-input').forEach((input) => {{
+        input.addEventListener('change', () => {{
+          let nameId = '';
+          if (input.id === 'formal_mapping_file') {{
+            nameId = 'mapping_formal_mapping_file_filename';
+          }} else if (['soh','overseas_po','china_po','in_transit','vmi'].includes(input.id)) {{
+            nameId = `stock_${{input.id}}_filename`;
+          }} else {{
+            nameId = `demand_${{input.id}}_filename`;
+          }}
+          const target = document.getElementById(nameId);
+          if (!target) return;
+          if (input.files && input.files.length > 0) {{
+            target.textContent = input.files[0].name;
+            target.classList.add('selected');
+          }} else {{
+            target.textContent = '未选择文件';
+            target.classList.remove('selected');
+          }}
+        }});
+      }});
+    }}
+
     function renderStats(stats) {{
+      if (!resultStats) return;
       resultStats.innerHTML = '';
       Object.entries(stats || {{}}).forEach(([k, v]) => {{
         const el = document.createElement('div');
@@ -220,6 +557,8 @@ def render_page(message="", error=""):
       }}
     }}
 
+    bindFileInputs();
+
     if (form) {{
       form.addEventListener('submit', async (event) => {{
         event.preventDefault();
@@ -247,6 +586,7 @@ def render_page(message="", error=""):
   </script>
 </body>
 </html>"""
+
 
 
 def ensure_mapping_files():
