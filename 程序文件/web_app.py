@@ -12,20 +12,26 @@ import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from pipeline_runner import run_pipeline
 
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
+FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
+FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
 RUNS_DIR = Path(os.environ.get("APP_RUNS_DIR", "/tmp/inventory_tool_runs"))
 MAPPING_PATH = PROJECT_ROOT / "mapping rules" / "mapping.xlsx"
 OPTIONAL_PO_MAPPING_PATH = PROJECT_ROOT / "mapping rules" / "overseas_po_spu_mapping.xlsx"
 FORMAL_MAPPING_PATH = PROJECT_ROOT / "mapping rules" / "正式标准化SPU映射表.xlsx"
+APP_VERSION = os.environ.get("APP_VERSION", "0.1.0")
+APP_ENV = os.environ.get("APP_ENV", "development")
+APP_BUILD_TIME = os.environ.get("APP_BUILD_TIME", "")
 
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="库存需求表处理工具", version="0.1.0")
+app = FastAPI(title="IT- SCM库存需求数据处理工具（ 办公终端）", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,6 +42,9 @@ app.add_middleware(
 )
 
 TASKS = {}
+
+if FRONTEND_ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_ASSETS_DIR)), name="frontend-assets")
 
 REQUIRED_UPLOADS = [
     ("soh", "全球 SOH 库存"),
@@ -110,7 +119,7 @@ def render_page(message="", error=""):
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>库存需求表处理工具</title>
+  <title>IT- SCM库存需求数据处理工具（ 办公终端）</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -416,7 +425,7 @@ def render_page(message="", error=""):
   <div class="wrap">
     <div class="hero">
       <div class="hero-badge">Supply Chain Data Platform</div>
-      <h1>供应链数据处理工具</h1>
+      <h1>IT- SCM库存需求数据处理工具（ 办公终端）</h1>
       <p>上传 5 个库存类 Excel 与 4 个需求类 Excel，系统将自动执行标准化映射、数据处理与汇总计算，并生成结果文件。</p>
     </div>
     {message_html}
@@ -594,6 +603,51 @@ def ensure_mapping_files():
         raise HTTPException(status_code=500, detail=f"未找到基础映射文件: {MAPPING_PATH}")
 
 
+def frontend_dist_available():
+    return (FRONTEND_DIST_DIR / "index.html").exists()
+
+
+def build_versioned_url(base_url: str):
+    normalized = (base_url or "").strip().rstrip("/")
+    if not normalized:
+        return ""
+
+    params = []
+    if APP_VERSION:
+        params.append(f"v={APP_VERSION}")
+    if APP_BUILD_TIME:
+        params.append(f"ts={APP_BUILD_TIME}")
+
+    if not params:
+        return normalized
+
+    separator = "&" if "?" in normalized else "?"
+    return f"{normalized}{separator}{'&'.join(params)}"
+
+
+def get_runtime_info():
+    public_base_url = os.environ.get("APP_PUBLIC_BASE_URL", "")
+
+    return {
+        "environment": APP_ENV,
+        "version": APP_VERSION,
+        "build_time": APP_BUILD_TIME,
+        "links": {
+            "current_origin": public_base_url,
+            "local_url": os.environ.get("APP_LOCAL_URL", ""),
+            "lan_url": os.environ.get("APP_LAN_URL", ""),
+            "backend_url": os.environ.get("APP_BACKEND_URL", ""),
+            "production_url": public_base_url,
+            "versioned_production_url": build_versioned_url(public_base_url),
+        },
+        "troubleshooting": [
+            "如果 localhost 无法打开，请确认 3000 端口未被本机防火墙或其他进程占用。",
+            "如果局域网链接无法访问，请确认电脑和移动设备处于同一网络，并允许 Python/Node 接受入站连接。",
+            "如果页面能打开但接口失败，请检查 FastAPI 服务是否已启动，以及代理目标端口是否正确。",
+        ],
+    }
+
+
 def validate_formal_mapping_xlsx(path: Path):
     xls = pd.ExcelFile(path)
     sheet = "正式映射表" if "正式映射表" in xls.sheet_names else xls.sheet_names[0]
@@ -619,6 +673,22 @@ async def save_upload(upload: UploadFile, target_path: Path):
                 break
             buffer.write(chunk)
     await upload.close()
+
+
+async def replace_formal_mapping_file(formal_mapping_file: UploadFile):
+    suffix = Path(formal_mapping_file.filename or "").suffix or ".xlsx"
+    if suffix.lower() not in [".xlsx", ".xls"]:
+        raise ValueError("仅支持上传 .xlsx/.xls 文件")
+
+    tmp_dir = RUNS_DIR / "_mapping_uploads"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"formal_mapping_upload{suffix}"
+    await save_upload(formal_mapping_file, tmp_path)
+    validate_formal_mapping_xlsx(tmp_path)
+
+    FORMAL_MAPPING_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path.replace(FORMAL_MAPPING_PATH)
+    return "上传成功：正式标准化SPU映射表已更新（后续任务将使用新规则）。"
 
 
 def execute_pipeline_task(task_id: str, saved_paths: dict, output_path: Path):
@@ -668,7 +738,14 @@ def execute_pipeline_task(task_id: str, saved_paths: dict, output_path: Path):
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
+    if frontend_dist_available():
+        return FileResponse(str(FRONTEND_DIST_DIR / "index.html"))
     return render_page()
+
+
+@app.get("/api/runtime-info")
+async def runtime_info():
+    return get_runtime_info()
 
 
 @app.get("/mapping/formal/download")
@@ -685,21 +762,19 @@ async def download_formal_mapping():
 @app.post("/mapping/formal/upload", response_class=HTMLResponse)
 async def upload_formal_mapping(formal_mapping_file: UploadFile = File(...)):
     try:
-        suffix = Path(formal_mapping_file.filename or "").suffix or ".xlsx"
-        if suffix.lower() not in [".xlsx", ".xls"]:
-            return render_page(error="仅支持上传 .xlsx/.xls 文件")
-
-        tmp_dir = RUNS_DIR / "_mapping_uploads"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        tmp_path = tmp_dir / f"formal_mapping_upload{suffix}"
-        await save_upload(formal_mapping_file, tmp_path)
-        validate_formal_mapping_xlsx(tmp_path)
-
-        FORMAL_MAPPING_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path.replace(FORMAL_MAPPING_PATH)
-        return render_page(message="上传成功：正式标准化SPU映射表已更新（后续任务将使用新规则）。")
+        message = await replace_formal_mapping_file(formal_mapping_file)
+        return render_page(message=message)
     except Exception as e:
         return render_page(error=f"上传失败：{e}")
+
+
+@app.post("/api/mapping/formal/upload")
+async def upload_formal_mapping_api(formal_mapping_file: UploadFile = File(...)):
+    try:
+        message = await replace_formal_mapping_file(formal_mapping_file)
+        return JSONResponse({"status": "success", "message": message})
+    except Exception as e:
+        return JSONResponse({"status": "failed", "error": str(e)}, status_code=400)
 
 
 @app.post("/api/run")

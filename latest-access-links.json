@@ -1,0 +1,12 @@
+{
+  "mode": "fallback-python",
+  "updated_at": "2026-04-19T00:00:00Z",
+  "version": "fallback-python-dev",
+  "links": {
+    "local_url": "http://localhost:3000",
+    "lan_url": "http://192.168.1.6:3000",
+    "backend_url": "http://localhost:3000",
+    "production_url": "",
+    "versioned_production_url": ""
+  }
+}

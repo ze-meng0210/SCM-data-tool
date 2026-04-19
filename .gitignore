@@ -10,6 +10,10 @@ uploads/
 *.csv
 *.log
 .DS_Store
+node_modules/
+frontend/dist/
+.dev-server/
+.husky/_/
 
 # 原始业务数据与本地输出
 库存数据/

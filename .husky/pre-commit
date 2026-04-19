@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+set -eu
+
+if command -v npm >/dev/null 2>&1; then
+  echo '[pre-commit] 同步访问链接信息'
+  npm run sync:links -- --mode pre-commit
+  echo '[pre-commit] 通知本地开发服务器重启'
+  npm run restart:dev -- --reason pre-commit
+else
+  echo '[pre-commit] 未检测到 npm，跳过前端自动化步骤'
+fi
